@@ -3,22 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Mech Destroyer</title>
+    <title>Mech Battle Pro</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser-arcade-physics.min.js"></script>
     <style>
-        body { margin: 0; padding: 0; background: #020205; overflow: hidden; font-family: monospace; }
-        #ui { position: absolute; top: 10px; left: 10px; color: #00f2ff; pointer-events: none; z-index: 10; font-size: 16px; }
-        .hint { position: absolute; bottom: 10px; width: 100%; text-align: center; color: #00f2ff; font-size: 12px; opacity: 0.6; }
+        body { margin: 0; background: #020205; overflow: hidden; }
+        #ui { position: absolute; top: 10px; left: 10px; color: #00f2ff; font-family: monospace; z-index: 10; font-size: 18px; text-shadow: 2px 2px #000; }
     </style>
 </head>
 <body>
-    <div id="ui">
-        STATUS: <span id="status">ONLINE</span><br>
-        MECH LVL: <span id="lvl">1</span><br>
-        SCRAP: <span id="scrap">0</span>
-    </div>
-    <div class="hint">УПРАВЛЕНИЕ: КЛИК/ТАП ПО ЭКРАНУ ДЛЯ ДВИЖЕНИЯ</div>
+    <div id="ui">UNIT: READY<br>SCRAP: <span id="scrap">0</span></div>
 
     <script>
         const tg = window.Telegram.WebApp;
@@ -29,115 +23,58 @@
             type: Phaser.AUTO,
             width: window.innerWidth,
             height: window.innerHeight,
-            physics: { default: 'arcade', arcade: { debug: false } },
+            physics: { default: 'arcade' },
             scene: { preload, create, update }
         };
 
-        let player, enemies, bullets, cursors, statsText;
-        let scrap = 0, level = 1;
+        let player, scrap = 0;
         const game = new Phaser.Game(config);
 
         function preload() {
-            // Загружаем графику: Игрок (Мех), Враг и Пуля
-            this.load.image('player_mech', 'https://labs.phaser.io/assets/sprites/ship.png');
-            this.load.image('enemy_drone', 'https://labs.phaser.io/assets/sprites/asmosoma.png');
-            this.load.image('bullet', 'https://labs.phaser.io/assets/sprites/bullets/bullet6.png');
+            // Загружаем ТВОЙ спрайт (убедись, что имя файла совпадает)
+            this.load.spritesheet('mech', 'mech_sheet.png', { 
+                frameWidth: 80, 
+                frameHeight: 80 
+            });
         }
 
         function create() {
-            // 1. Фон - сетка радара
+            // Рисуем сетку для атмосферы
             let graphics = this.add.graphics();
             graphics.lineStyle(1, 0x00f2ff, 0.1);
             for(let i=0; i<config.width; i+=40) graphics.lineBetween(i, 0, i, config.height);
             for(let j=0; j<config.height; j+=40) graphics.lineBetween(0, j, config.width, j);
 
-            // 2. Игрок (Ваш Мех)
-            player = this.physics.add.sprite(config.width/2, config.height/2, 'player_mech');
-            player.setTint(0x00f2ff);
-            player.setDrag(1000);
-            player.setCollideWorldBounds(true);
+            // 1. Создаем анимацию ходьбы (используем первый ряд кадров 0-3)
+            this.anims.create({
+                key: 'walk_down',
+                frames: this.anims.generateFrameNumbers('mech', { start: 0, end: 3 }),
+                frameRate: 8,
+                repeat: -1
+            });
 
-            // 3. Группы объектов
-            enemies = this.physics.add.group();
-            bullets = this.physics.add.group();
+            // 2. Создаем робота
+            player = this.physics.add.sprite(config.width/2, config.height/2, 'mech', 0);
+            player.setScale(1.5); // Можно увеличить, если робот мелкий
 
-            // 4. Управление для ПК
-            cursors = this.input.keyboard.createCursorKeys();
-
-            // 5. Управление для Телефона (Клик в точку)
+            // 3. Управление
             this.input.on('pointerdown', (pointer) => {
-                this.physics.moveToObject(player, pointer, 250);
-                player.rotation = Phaser.Math.Angle.Between(player.x, player.y, pointer.x, pointer.y) + Math.PI/2;
+                this.physics.moveToObject(player, pointer, 150);
+                player.play('walk_down', true); // Запуск анимации ходьбы
             });
-
-            // 6. Столкновения (Пуля попала во врага)
-            this.physics.add.overlap(bullets, enemies, (bullet, enemy) => {
-                bullet.destroy();
-                enemy.destroy();
-                scrap += 5;
-                updateUIGame();
-                saveProgress();
-                spawnEnemy(this); // Создаем нового врага взамен убитого
-            });
-
-            // 7. Стрельба (автоматическая каждые 800мс)
-            this.time.addEvent({
-                delay: 800,
-                callback: fireBullet,
-                callbackScope: this,
-                loop: true
-            });
-
-            // Спавним первых врагов
-            for(let i=0; i<3; i++) spawnEnemy(this);
 
             loadProgress();
         }
 
-        function spawnEnemy(scene) {
-            let x = Phaser.Math.Between(50, config.width - 50);
-            let y = Phaser.Math.Between(50, config.height - 50);
-            let enemy = enemies.create(x, y, 'enemy_drone');
-            enemy.setTint(0xff3333); // Красный цвет врага
-            enemy.setScale(0.8);
-        }
-
-        function fireBullet() {
-            let nearestEnemy = null;
-            let minDist = 1000;
-
-            enemies.getChildren().forEach(e => {
-                let dist = Phaser.Math.Distance.Between(player.x, player.y, e.x, e.y);
-                if(dist < minDist) { minDist = dist; nearestEnemy = e; }
-            });
-
-            if(nearestEnemy) {
-                let bullet = bullets.create(player.x, player.y, 'bullet');
-                this.physics.moveToObject(bullet, nearestEnemy, 400);
-                bullet.rotation = Phaser.Math.Angle.Between(player.x, player.y, nearestEnemy.x, nearestEnemy.y) + Math.PI/2;
-            }
-        }
-
         function update() {
-            // Управление WASD/Стрелками на компьютере
-            if (cursors.left.isDown) player.setVelocityX(-200);
-            else if (cursors.right.isDown) player.setVelocityX(200);
-            if (cursors.up.isDown) player.setVelocityY(-200);
-            else if (cursors.down.isDown) player.setVelocityY(200);
-        }
-
-        function updateUIGame() {
-            document.getElementById('scrap').innerText = scrap;
-            document.getElementById('lvl').innerText = level;
-        }
-
-        async function saveProgress() {
-            const userId = tg.initDataUnsafe.user?.id || 'TEST';
-            fetch(`${SERVER_URL}/save`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ userId, level, scrap })
-            });
+            // Проверка: если робот дошел до цели - остановить анимацию
+            const distance = Phaser.Math.Distance.Between(player.x, player.y, this.input.activePointer.x, this.input.activePointer.y);
+            
+            if (this.input.activePointer.isDown && distance < 10) {
+                player.body.reset(player.x, player.y);
+                player.stop(); // Остановка на кадре 0
+                player.setFrame(0);
+            }
         }
 
         async function loadProgress() {
@@ -145,10 +82,9 @@
             try {
                 const res = await fetch(`${SERVER_URL}/load/${userId}`);
                 const data = await res.json();
-                level = data.level || 1;
                 scrap = data.scrap || 0;
-                updateUIGame();
-            } catch (e) { updateUIGame(); }
+                document.getElementById('scrap').innerText = scrap;
+            } catch (e) {}
         }
     </script>
 </body>
