@@ -100,3 +100,90 @@
                 credits = 100; 
                 updateView(); 
             }
+        }
+
+        function updateView() {
+            document.getElementById('balance').innerText = credits;
+            // Обновляем цвета символов в барабанах
+            [1,2,3].forEach(id => {
+                const el = document.getElementById('r'+id);
+                el.className = 'reel s-' + el.innerText;
+            });
+        }
+
+        function startSpin() {
+            if (isSpinning || credits < 10) return;
+
+            isSpinning = true;
+            credits -= 10;
+            updateView();
+            document.getElementById('status').innerText = "";
+            document.getElementById('spin-btn').disabled = true;
+
+            const reels = [document.getElementById('r1'), document.getElementById('r2'), document.getElementById('r3')];
+            let results = [];
+
+            reels.forEach((reel, index) => {
+                reel.classList.add('blur');
+                let iters = 0;
+                let maxIters = 12 + (index * 8); // Разное время остановки
+
+                let timer = setInterval(() => {
+                    const randomSym = symbols[Math.floor(Math.random() * symbols.length)];
+                    reel.innerText = randomSym;
+                    reel.className = 'reel s-' + randomSym + ' blur'; // Держим цвет даже в блюре
+                    
+                    iters++;
+                    if (iters > maxIters) {
+                        clearInterval(timer);
+                        const finalSym = symbols[Math.floor(Math.random() * symbols.length)];
+                        reel.innerText = finalSym;
+                        results[index] = finalSym;
+                        reel.classList.remove('blur');
+                        updateView();
+                        tg.HapticFeedback.impactOccurred('medium');
+
+                        if (index === 2) finalize(results);
+                    }
+                }, 70);
+            });
+        }
+
+        function finalize(res) {
+            isSpinning = false;
+            document.getElementById('spin-btn').disabled = false;
+            
+            let prize = 0;
+            // ЛОГИКА ВЫИГРЫША
+            if (res[0] === res[1] && res[1] === res[2]) {
+                if (res[0] === '7') prize = 500;
+                else if (res[0] === 'X') prize = 200;
+                else if (res[1] === 'A') prize = 150;
+                else prize = 100;
+            } else if (res[0] === res[1] || res[1] === res[2] || res[0] === res[2]) {
+                prize = 25;
+            }
+
+            if (prize > 0) {
+                credits += prize;
+                document.getElementById('status').innerText = "WIN: +" + prize;
+                tg.HapticFeedback.notificationOccurred('success');
+            }
+            
+            updateView();
+            saveGame();
+        }
+
+        async function saveGame() {
+            const userId = tg.initDataUnsafe.user?.id || 'LOCAL_DEV';
+            fetch(`${SERVER_URL}/save`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userId: userId, scrap: credits, level: 1 })
+            });
+        }
+
+        loadGame();
+    </script>
+</body>
+</html>
