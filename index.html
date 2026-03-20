@@ -3,205 +3,108 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Тетрис Telegram</title>
+    <title>Mech Pilot Online</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser-arcade-physics.min.js"></script>
     <style>
-        body {
-            background-color: var(--tg-theme-bg-color, #111);
-            color: var(--tg-theme-text-color, #fff);
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            font-family: sans-serif;
-            margin: 0;
-            padding: 20px 0;
-            overflow: hidden;
+        body { margin: 0; background: #050510; color: #00f2ff; font-family: 'Courier New', monospace; overflow: hidden; }
+        #ui { position: absolute; bottom: 30px; width: 100%; text-align: center; }
+        .btn { 
+            background: #00f2ff; color: #000; border: none; padding: 15px 25px; 
+            margin: 5px; cursor: pointer; font-weight: bold; border-radius: 5px;
         }
-        canvas {
-            border: 2px solid #333;
-            background-color: #000;
-            box-shadow: 0 0 10px rgba(255, 255, 255, 0.1);
-        }
-        .controls {
-            margin-top: 20px;
-            display: grid;
-            grid-template-columns: repeat(3, 60px);
-            gap: 10px;
-        }
-        button {
-            padding: 15px;
-            font-size: 18px;
-            background-color: var(--tg-theme-button-color, #3390ec);
-            color: var(--tg-theme-button-text-color, #fff);
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-            touch-action: manipulation; /* Убирает задержку двойного тапа на телефоне */
-        }
-        button:active { opacity: 0.8; }
-        .btn-up { grid-column: 2; }
-        .btn-left { grid-column: 1; grid-row: 2; }
-        .btn-down { grid-column: 2; grid-row: 2; }
-        .btn-right { grid-column: 3; grid-row: 2; }
     </style>
 </head>
 <body>
-
-    <h2>Тетрис</h2>
-    <canvas id="tetris" width="240" height="400"></canvas>
-    
-    <div class="controls">
-        <button class="btn-up" onclick="playerRotate(1)">↻</button>
-        <button class="btn-left" onclick="playerMove(-1)">←</button>
-        <button class="btn-down" onclick="playerDrop()">↓</button>
-        <button class="btn-right" onclick="playerMove(1)">→</button>
+    <div id="ui">
+        <button class="btn" onclick="performMission()">МИССИЯ (+10 лома)</button>
+        <button class="btn" onclick="upgradeMech()">ПРОКАЧКА (20 лома)</button>
     </div>
 
     <script>
-        // Инициализация Web App
         const tg = window.Telegram.WebApp;
-        tg.expand(); // Разворачиваем игру на весь экран телефона
+        tg.expand();
 
-        const canvas = document.getElementById('tetris');
-        const context = canvas.getContext('2d');
-        context.scale(20, 20);
+        // ТВОЯ ССЫЛКА С RENDER ТУТ:
+        const SERVER_URL = 'https://telegram-tetris.onrender.com';
 
-        function arenaSweep() {
-            let rowCount = 1;
-            outer: for (let y = arena.length - 1; y > 0; --y) {
-                for (let x = 0; x < arena[y].length; ++x) {
-                    if (arena[y][x] === 0) continue outer;
-                }
-                const row = arena.splice(y, 1)[0].fill(0);
-                arena.unshift(row);
-                ++y;
+        const config = {
+            type: Phaser.AUTO,
+            width: window.innerWidth,
+            height: window.innerHeight - 150,
+            backgroundColor: '#050510',
+            scene: { preload, create, update }
+        };
+
+        let game = new Phaser.Game(config);
+        let mech, statsText, scrap = 0, level = 1;
+
+        function preload() {
+            // Используем стандартный спрайт для теста
+            this.load.image('mech', 'https://labs.phaser.io/assets/sprites/fleck.png');
+        }
+
+        function create() {
+            mech = this.add.sprite(config.width / 2, config.height / 2, 'mech').setScale(5).setTint(0x00f2ff);
+            statsText = this.add.text(20, 20, 'Загрузка данных...', { fontSize: '20px', fill: '#00f2ff' });
+            
+            loadProgress(); // Пытаемся загрузить данные с сервера при старте
+        }
+
+        function update() {
+            if(mech) mech.y += Math.sin(this.time.now / 500) * 0.2;
+        }
+
+        function updateUI() {
+            const name = tg.initDataUnsafe.user?.first_name || 'Пилот';
+            statsText.setText(`ПИЛОТ: ${name}\nУРОВЕНЬ: ${level}\nМЕТАЛЛОЛОМ: ${scrap}`);
+        }
+
+        // Функция выполнения миссии
+        async function performMission() {
+            scrap += 10;
+            updateUI();
+            await saveProgress();
+        }
+
+        // Функция прокачки
+        async function upgradeMech() {
+            if (scrap >= 20) {
+                scrap -= 20;
+                level++;
+                updateUI();
+                await saveProgress();
+            } else {
+                tg.showAlert("Недостаточно лома! Нужно 20.");
             }
         }
 
-        function collide(arena, player) {
-            const [m, o] = [player.matrix, player.pos];
-            for (let y = 0; y < m.length; ++y) {
-                for (let x = 0; x < m[y].length; ++x) {
-                    if (m[y][x] !== 0 && (arena[y + o.y] && arena[y + o.y][x + o.x]) !== 0) {
-                        return true;
-                    }
-                }
-            }
-            return false;
-        }
-
-        function createMatrix(w, h) {
-            const matrix = [];
-            while (h--) matrix.push(new Array(w).fill(0));
-            return matrix;
-        }
-
-        function createPiece(type) {
-            if (type === 'T') return [[0,0,0],[1,1,1],[0,1,0]];
-            if (type === 'O') return [[2,2],[2,2]];
-            if (type === 'L') return [[0,3,0],[0,3,0],[0,3,3]];
-            if (type === 'J') return [[0,4,0],[0,4,0],[4,4,0]];
-            if (type === 'I') return [[0,5,0,0],[0,5,0,0],[0,5,0,0],[0,5,0,0]];
-            if (type === 'S') return [[0,6,6],[6,6,0],[0,0,0]];
-            if (type === 'Z') return [[7,7,0],[0,7,7],[0,0,0]];
-        }
-
-        function drawMatrix(matrix, offset) {
-            const colors = [null, '#FF0D72', '#0DC2FF', '#0DFF72', '#F538FF', '#FF8E0D', '#FFE138', '#3877FF'];
-            matrix.forEach((row, y) => {
-                row.forEach((value, x) => {
-                    if (value !== 0) {
-                        context.fillStyle = colors[value];
-                        context.fillRect(x + offset.x, y + offset.y, 1, 1);
-                    }
+        // СОХРАНЕНИЕ НА СЕРВЕР
+        async function saveProgress() {
+            const userId = tg.initDataUnsafe.user?.id || 'local_user';
+            try {
+                await fetch(`${SERVER_URL}/save`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ userId, level, scrap })
                 });
-            });
+            } catch (e) { console.error("Ошибка сохранения:", e); }
         }
 
-        function draw() {
-            context.fillStyle = '#000';
-            context.fillRect(0, 0, canvas.width, canvas.height);
-            drawMatrix(arena, {x: 0, y: 0});
-            drawMatrix(player.matrix, player.pos);
-        }
-
-        function merge(arena, player) {
-            player.matrix.forEach((row, y) => {
-                row.forEach((value, x) => {
-                    if (value !== 0) arena[y + player.pos.y][x + player.pos.x] = value;
-                });
-            });
-        }
-
-        function playerDrop() {
-            player.pos.y++;
-            if (collide(arena, player)) {
-                player.pos.y--;
-                merge(arena, player);
-                playerReset();
-                arenaSweep();
-            }
-            dropCounter = 0;
-        }
-
-        function playerMove(offset) {
-            player.pos.x += offset;
-            if (collide(arena, player)) player.pos.x -= offset;
-        }
-
-        function playerReset() {
-            const pieces = 'TOLJISZ';
-            player.matrix = createPiece(pieces[pieces.length * Math.random() | 0]);
-            player.pos.y = 0;
-            player.pos.x = (arena[0].length / 2 | 0) - (player.matrix[0].length / 2 | 0);
-            if (collide(arena, player)) {
-                arena.forEach(row => row.fill(0)); // Game Over
+        // ЗАГРУЗКА С СЕРВЕРА
+        async function loadProgress() {
+            const userId = tg.initDataUnsafe.user?.id || 'local_user';
+            try {
+                const res = await fetch(`${SERVER_URL}/load/${userId}`);
+                const data = await res.json();
+                level = data.level || 1;
+                scrap = data.scrap || 0;
+                updateUI();
+            } catch (e) { 
+                console.error("Ошибка загрузки:", e);
+                updateUI(); // Если сервер спит, просто покажем дефолт
             }
         }
-
-        function playerRotate(dir) {
-            const pos = player.pos.x;
-            let offset = 1;
-            rotate(player.matrix, dir);
-            while (collide(arena, player)) {
-                player.pos.x += offset;
-                offset = -(offset + (offset > 0 ? 1 : -1));
-                if (offset > player.matrix[0].length) {
-                    rotate(player.matrix, -dir);
-                    player.pos.x = pos;
-                    return;
-                }
-            }
-        }
-
-        function rotate(matrix, dir) {
-            for (let y = 0; y < matrix.length; ++y) {
-                for (let x = 0; x < y; ++x) {
-                    [matrix[x][y], matrix[y][x]] = [matrix[y][x], matrix[x][y]];
-                }
-            }
-            if (dir > 0) matrix.forEach(row => row.reverse());
-            else matrix.reverse();
-        }
-
-        let dropCounter = 0;
-        let dropInterval = 1000;
-        let lastTime = 0;
-
-        function update(time = 0) {
-            const deltaTime = time - lastTime;
-            lastTime = time;
-            dropCounter += deltaTime;
-            if (dropCounter > dropInterval) playerDrop();
-            draw();
-            requestAnimationFrame(update);
-        }
-
-        const arena = createMatrix(12, 20);
-        const player = { pos: {x: 0, y: 0}, matrix: null };
-
-        playerReset();
-        update();
     </script>
 </body>
 </html>
