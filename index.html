@@ -6,54 +6,97 @@
     <title>Cyber Slot 777</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
-        :root { --neon: #00f2ff; --pink: #ff0055; --gold: #ffcc00; }
+        :root { --neon: #00f2ff; --pink: #ff0055; --gold: #ffcc00; --bg: #020205; }
+        
         body { 
-            margin: 0; background: #020205; color: #fff; 
-            font-family: 'Segoe UI', sans-serif; overflow: hidden;
+            margin: 0; background: var(--bg); color: #fff; 
+            font-family: 'Courier New', monospace; overflow: hidden;
             display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh;
         }
 
-        /* Панель баланса */
-        .balance { position: absolute; top: 20px; font-size: 14px; color: var(--neon); letter-spacing: 2px; }
-        #scrap-val { font-size: 24px; font-weight: 900; color: #fff; display: block; text-align: center; }
+        /* Баланс сверху */
+        .header { position: absolute; top: 40px; text-align: center; }
+        .label { font-size: 10px; color: var(--neon); letter-spacing: 4px; opacity: 0.7; }
+        #balance { font-size: 36px; font-weight: 900; text-shadow: 0 0 15px var(--neon); margin-top: 5px; }
 
-        /* Игровой автомат */
-        .slot-machine {
-            display: flex; gap: 10px; padding: 20px;
-            background: rgba(255,255,255,0.02); border: 2px solid rgba(0,242,255,0.1);
-            border-radius: 20px; backdrop-filter: blur(10px); box-shadow: 0 0 40px rgba(0,0,0,0.8);
+        /* Игровой блок */
+        .slot-wrapper {
+            display: flex; gap: 15px; padding: 30px;
+            background: rgba(255,255,255,0.02); border: 1px solid rgba(0,242,255,0.1);
+            border-radius: 25px; box-shadow: 0 0 60px rgba(0,0,0,1);
+            position: relative;
         }
 
         .reel {
-            width: 80px; height: 120px; background: #050510;
-            border: 1px solid rgba(0,242,255,0.2); border-radius: 10px;
+            width: 75px; height: 110px; background: #000;
+            border: 2px solid #111; border-radius: 15px;
             display: flex; align-items: center; justify-content: center;
-            font-size: 50px; overflow: hidden; position: relative;
+            font-size: 50px; font-weight: 900; transition: 0.1s;
+            box-shadow: inset 0 0 20px rgba(0,0,0,1);
         }
 
-        .reel-content { display: flex; flex-direction: column; transition: transform 0.1s cubic-bezier(0.45, 0.05, 0.55, 0.95); }
+        /* Стили символов */
+        .s-7 { color: var(--gold); text-shadow: 0 0 20px var(--gold); }
+        .s-X { color: var(--pink); text-shadow: 0 0 20px var(--pink); }
+        .s-A { color: var(--neon); text-shadow: 0 0 20px var(--neon); }
+        .s-S { color: #fff; text-shadow: 0 0 20px #fff; }
 
-        /* Кнопка */
-        .spin-btn {
-            margin-top: 40px; width: 200px; height: 60px;
-            background: transparent; border: 2px solid var(--pink); color: var(--pink);
-            font-size: 20px; font-weight: 900; border-radius: 30px; cursor: pointer;
-            text-transform: uppercase; transition: 0.2s; box-shadow: 0 0 15px rgba(255,0,85,0.2);
+        /* Кнопка управления */
+        .spin-container { margin-top: 50px; }
+        .btn-spin {
+            width: 240px; height: 70px; background: transparent;
+            border: 2px solid var(--pink); color: var(--pink);
+            font-size: 24px; font-weight: 900; border-radius: 15px;
+            cursor: pointer; transition: 0.2s; letter-spacing: 2px;
+            box-shadow: 0 0 20px rgba(255,0,85,0.1);
         }
-        .spin-btn:active { transform: scale(0.95); background: var(--pink); color: #000; box-shadow: 0 0 30px var(--pink); }
-        .spin-btn:disabled { opacity: 0.3; filter: grayscale(1); }
+        .btn-spin:active { transform: scale(0.92); background: var(--pink); color: #000; box-shadow: 0 0 40px var(--pink); }
+        .btn-spin:disabled { opacity: 0.1; filter: grayscale(1); }
 
-        /* Инфо */
-        .win-info { margin-top: 20px; height: 20px; color: var(--gold); font-weight: bold; text-transform: uppercase; font-size: 14px; }
+        /* Сообщения */
+        #status { margin-top: 25px; height: 30px; font-size: 20px; font-weight: bold; color: var(--gold); text-align: center; }
         
-        .blur { filter: blur(4px); opacity: 0.6; }
+        /* Эффект вращения */
+        .blur { filter: blur(6px); opacity: 0.3; transform: scale(0.9); }
     </style>
 </head>
 <body>
-    <div class="balance">
-        CURRENT SCRAP
-        <span id="scrap-val">0</span>
+
+    <div class="header">
+        <div class="label">CREDITS AVAILABLE</div>
+        <div id="balance">0</div>
     </div>
 
-    <div class="slot-machine">
-        <div class="reel"><div id="reel
+    <div class="slot-wrapper">
+        <div class="reel" id="r1">7</div>
+        <div class="reel" id="r2">7</div>
+        <div class="reel" id="r3">7</div>
+    </div>
+
+    <div id="status"></div>
+
+    <div class="spin-container">
+        <button id="spin-btn" class="btn-spin" onclick="startSpin()">SPIN (-10)</button>
+    </div>
+
+    <script>
+        const tg = window.Telegram.WebApp;
+        tg.expand();
+        
+        const SERVER_URL = 'https://telegram-tetris.onrender.com';
+        const symbols = ['7', 'X', 'A', 'S']; 
+        let credits = 0;
+        let isSpinning = false;
+
+        async function loadGame() {
+            const userId = tg.initDataUnsafe.user?.id || 'LOCAL_DEV';
+            try {
+                const res = await fetch(`${SERVER_URL}/load/${userId}`);
+                const data = await res.json();
+                credits = data.scrap || 100; // Если 0 или новый игрок - даем 100
+                if (credits < 10) credits = 100;
+                updateView();
+            } catch(e) { 
+                credits = 100; 
+                updateView(); 
+            }
