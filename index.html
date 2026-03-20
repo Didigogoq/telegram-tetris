@@ -3,215 +3,57 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Cyber Mech: Evolution</title>
+    <title>Cyber Slot 777</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
-        :root { --blue: #00f2ff; --pink: #ff0055; --gold: #ffcc00; --bg: #020205; }
-        
+        :root { --neon: #00f2ff; --pink: #ff0055; --gold: #ffcc00; }
         body { 
-            margin: 0; background: var(--bg); color: #fff; 
-            font-family: 'Orbitron', sans-serif; overflow: hidden;
-            background-image: linear-gradient(180deg, #050515 0%, #020205 100%);
+            margin: 0; background: #020205; color: #fff; 
+            font-family: 'Segoe UI', sans-serif; overflow: hidden;
+            display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh;
         }
 
-        #app { display: flex; flex-direction: column; align-items: center; justify-content: space-between; height: 100vh; padding: 20px; box-sizing: border-box; }
+        /* Панель баланса */
+        .balance { position: absolute; top: 20px; font-size: 14px; color: var(--neon); letter-spacing: 2px; }
+        #scrap-val { font-size: 24px; font-weight: 900; color: #fff; display: block; text-align: center; }
 
-        /* Верхняя панель ресурсов */
-        .top-bar { width: 100%; display: flex; justify-content: space-between; font-size: 12px; letter-spacing: 1px; color: var(--blue); border-bottom: 1px solid rgba(0,242,255,0.1); padding-bottom: 10px; }
-
-        /* Энергия */
-        .energy-container { display: flex; gap: 4px; margin-top: 5px; }
-        .energy-cell { width: 12px; height: 6px; background: rgba(255,255,255,0.1); border-radius: 1px; transition: 0.3s; }
-        .energy-active { background: var(--gold); box-shadow: 0 0 8px var(--gold); }
-
-        /* Карточки */
-        .card {
-            width: 100%; max-width: 320px; background: rgba(255, 255, 255, 0.02);
-            border: 1px solid rgba(0, 242, 255, 0.15); border-radius: 20px; padding: 20px;
-            backdrop-filter: blur(15px); transition: transform 0.1s;
-        }
-        .shake { animation: shake 0.2s ease-in-out; }
-        @keyframes shake {
-            0% { transform: translate(0,0); } 25% { transform: translate(5px,5px); }
-            50% { transform: translate(-5px, -5px); } 75% { transform: translate(5px, -5px); } 100% { transform: translate(0,0); }
+        /* Игровой автомат */
+        .slot-machine {
+            display: flex; gap: 10px; padding: 20px;
+            background: rgba(255,255,255,0.02); border: 2px solid rgba(0,242,255,0.1);
+            border-radius: 20px; backdrop-filter: blur(10px); box-shadow: 0 0 40px rgba(0,0,0,0.8);
         }
 
-        .hp-bar { width: 100%; height: 6px; background: #111; border-radius: 10px; margin: 10px 0; overflow: hidden; }
-        .hp-fill { height: 100%; width: 100%; transition: 0.4s; }
-
-        /* Кнопки */
-        .controls { width: 100%; max-width: 320px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px; }
-        .action-btn { 
-            background: transparent; border: 1px solid var(--blue); color: var(--blue);
-            padding: 16px; border-radius: 12px; font-weight: bold; font-size: 10px;
-            text-transform: uppercase; cursor: pointer; transition: 0.2s;
+        .reel {
+            width: 80px; height: 120px; background: #050510;
+            border: 1px solid rgba(0,242,255,0.2); border-radius: 10px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 50px; overflow: hidden; position: relative;
         }
-        .action-btn:active { background: var(--blue); color: #000; }
-        .btn-main { grid-column: span 2; border-color: var(--pink); color: var(--pink); background: rgba(255,0,85,0.05); font-size: 13px; }
 
-        /* Текст статуса */
-        .status-msg { font-size: 11px; color: #555; height: 20px; text-transform: uppercase; }
-        .rank-label { font-size: 10px; color: var(--gold); margin-top: 5px; display: block; }
+        .reel-content { display: flex; flex-direction: column; transition: transform 0.1s cubic-bezier(0.45, 0.05, 0.55, 0.95); }
+
+        /* Кнопка */
+        .spin-btn {
+            margin-top: 40px; width: 200px; height: 60px;
+            background: transparent; border: 2px solid var(--pink); color: var(--pink);
+            font-size: 20px; font-weight: 900; border-radius: 30px; cursor: pointer;
+            text-transform: uppercase; transition: 0.2s; box-shadow: 0 0 15px rgba(255,0,85,0.2);
+        }
+        .spin-btn:active { transform: scale(0.95); background: var(--pink); color: #000; box-shadow: 0 0 30px var(--pink); }
+        .spin-btn:disabled { opacity: 0.3; filter: grayscale(1); }
+
+        /* Инфо */
+        .win-info { margin-top: 20px; height: 20px; color: var(--gold); font-weight: bold; text-transform: uppercase; font-size: 14px; }
+        
+        .blur { filter: blur(4px); opacity: 0.6; }
     </style>
 </head>
 <body>
-    <div id="app">
-        <div class="top-bar">
-            <div>SCRAP: <span id="p-scrap" style="color:#fff">0</span></div>
-            <div>
-                ENERGY
-                <div class="energy-container" id="energy-bar"></div>
-            </div>
-        </div>
-
-        <div class="card" id="enemy-card" style="border-color: var(--pink); opacity: 0.4;">
-            <div style="font-size: 10px; color: var(--pink)">TARGET ACQUIRED</div>
-            <div id="e-hp-text" style="font-size: 22px; font-weight: 900;">HP: 100</div>
-            <div class="hp-bar"><div id="e-hp-fill" class="hp-fill" style="background: var(--pink)"></div></div>
-            <div id="e-info" style="font-size: 10px; color: #555;">SCANNING...</div>
-        </div>
-
-        <div class="card" id="player-card" style="border-color: var(--blue)">
-            <span id="p-rank" class="rank-label">RECRUIT PILOT</span>
-            <div id="p-hp-text" style="font-size: 22px; font-weight: 900;">HP: 100</div>
-            <div class="hp-bar"><div id="p-hp-fill" class="hp-fill" style="background: var(--blue)"></div></div>
-            <div style="display: flex; justify-content: space-between; font-size: 11px; color: var(--blue)">
-                <span id="p-name">PILOT</span>
-                <span id="p-lvl">LVL 1</span>
-            </div>
-        </div>
-
-        <div id="log" class="status-msg">Waiting for orders...</div>
-
-        <div class="controls">
-            <button class="action-btn" onclick="hit('attack')">Fire Main Gun</button>
-            <button class="action-btn" onclick="hit('defend')">Active Shield</button>
-            <button class="action-btn btn-main" onclick="findTarget()">Find Battle (-1 Energy)</button>
-        </div>
+    <div class="balance">
+        CURRENT SCRAP
+        <span id="scrap-val">0</span>
     </div>
 
-    <script>
-        const tg = window.Telegram.WebApp;
-        const SERVER_URL = 'https://telegram-tetris.onrender.com';
-        let p = { scrap: 0, lvl: 1, hp: 100, energy: 5 };
-        let e = { hp: 100, lvl: 0, active: false };
-
-        async function init() {
-            const id = tg.initDataUnsafe.user?.id || 'TEST';
-            try {
-                const res = await fetch(`${SERVER_URL}/load/${id}`);
-                const data = await res.json();
-                p.scrap = data.scrap || 0;
-                p.lvl = data.level || 1;
-            } catch(err) {}
-            renderEnergy();
-            updateUI();
-        }
-
-        function renderEnergy() {
-            const container = document.getElementById('energy-bar');
-            container.innerHTML = '';
-            for(let i=0; i<5; i++) {
-                let cell = document.createElement('div');
-                cell.className = `energy-cell ${i < p.energy ? 'energy-active' : ''}`;
-                container.appendChild(cell);
-            }
-        }
-
-        function getRank(lvl) {
-            if(lvl < 5) return "IRON RECRUIT";
-            if(lvl < 10) return "STEEL COMMANDER";
-            if(lvl < 20) return "CHROME VETERAN";
-            return "CYBER OVERLORD";
-        }
-
-        function updateUI() {
-            document.getElementById('p-name').innerText = tg.initDataUnsafe.user?.first_name || "PILOT";
-            document.getElementById('p-scrap').innerText = p.scrap;
-            document.getElementById('p-lvl').innerText = "LVL " + p.lvl;
-            document.getElementById('p-rank').innerText = getRank(p.lvl);
-            document.getElementById('p-hp-fill').style.width = p.hp + "%";
-            document.getElementById('e-hp-fill').style.width = e.hp + "%";
-            renderEnergy();
-        }
-
-        function findTarget() {
-            if(p.energy <= 0) return tg.showAlert("Energy depleted! Wait for recharge.");
-            if(e.active) return;
-
-            p.energy--;
-            document.getElementById('log').innerText = "Locating enemy...";
-            document.getElementById('enemy-card').style.opacity = "0.3";
-
-            setTimeout(() => {
-                e.lvl = Math.floor(Math.random() * p.lvl) + 1;
-                e.hp = 100;
-                e.active = true;
-                document.getElementById('enemy-card').style.opacity = "1";
-                document.getElementById('e-info').innerText = "THREAT LEVEL: " + e.lvl;
-                document.getElementById('log').innerText = "Engaged with Hostile Unit";
-                updateUI();
-            }, 600);
-        }
-
-        function hit(type) {
-            if(!e.active) return;
-            
-            // Тряска при атаке
-            document.getElementById('app').classList.add('shake');
-            setTimeout(() => document.getElementById('app').classList.remove('shake'), 200);
-
-            let crit = Math.random() > 0.8;
-            let pDmg = (Math.random() * 10 + 10) * (p.lvl * 0.4) * (crit ? 2 : 1);
-            let eDmg = (Math.random() * 8 + 5) * (e.lvl * 0.4);
-
-            if(type === 'defend') { eDmg *= 0.2; pDmg *= 0.4; }
-
-            e.hp -= Math.floor(pDmg);
-            p.hp -= Math.floor(eDmg);
-            
-            document.getElementById('log').innerText = (crit ? "CRITICAL HIT! " : "") + `You dealt ${Math.floor(pDmg)} dmg`;
-            updateUI();
-
-            if(e.hp <= 0) win();
-            else if(p.hp <= 0) lose();
-        }
-
-        function win() {
-            tg.HapticFeedback.notificationOccurred('success');
-            p.scrap += 25;
-            if(p.scrap % 100 === 0) p.lvl++;
-            document.getElementById('log').innerText = "Unit destroyed. Scrap collected.";
-            endBattle();
-        }
-
-        function lose() {
-            tg.HapticFeedback.notificationOccurred('error');
-            p.scrap = Math.max(0, p.scrap - 15);
-            document.getElementById('log').innerText = "Critical damage. Retreating...";
-            endBattle();
-        }
-
-        function endBattle() {
-            e.active = false;
-            e.lvl = 0;
-            p.hp = 100;
-            save();
-            setTimeout(updateUI, 1000);
-        }
-
-        async function save() {
-            const id = tg.initDataUnsafe.user?.id || 'TEST';
-            fetch(`${SERVER_URL}/save`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ userId: id, scrap: p.scrap, level: p.lvl })
-            });
-        }
-
-        init();
-        // Регенерация энергии каждые 5 минут (для теста можно меньше)
-        setInterval(() => { if(p.energy < 5) { p.energy++; renderEnergy(); } }, 300000);
-    </script>
-</body>
-</html>
+    <div class="slot-machine">
+        <div class="reel"><div id="reel
