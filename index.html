@@ -31,32 +31,34 @@
         const game = new Phaser.Game(config);
 
         function preload() {
-            // Исправленные размеры: пробуем 79x79, чтобы отсечь лишние пиксели по краям
+            // МЕНЯЕМ НАСТРОЙКИ НАРЕЗКИ:
+            // Используем 78x78 и margin/spacing чтобы убрать артефакты по бокам
             this.load.spritesheet('mech', 'mech_sheet.png', { 
-                frameWidth: 80, 
-                frameHeight: 80,
-                margin: 1,   // Пропускаем 1 пиксель от края картинки
-                spacing: 1   // Пропускаем 2 пикселя между кадрами
+                frameWidth: 78, 
+                frameHeight: 78,
+                margin: 1, 
+                spacing: 2
             });
             this.load.image('enemy', 'https://labs.phaser.io/assets/sprites/asmosoma.png');
             this.load.image('bullet', 'https://labs.phaser.io/assets/sprites/bullets/bullet6.png');
         }
 
         function create() {
-            // Сетка фона
+            // Фон - сетка
             let graphics = this.add.graphics();
             graphics.lineStyle(1, 0x00f2ff, 0.05);
             for(let i=0; i<config.width; i+=40) graphics.lineBetween(i, 0, i, config.height);
             for(let j=0; j<config.height; j+=40) graphics.lineBetween(0, j, config.width, j);
 
-            // Анимации
-            const anims = [
+            // Анимации (четко по кадрам)
+            const animData = [
                 { key: 'walk_down', start: 0, end: 3 },
                 { key: 'walk_right', start: 4, end: 7 },
                 { key: 'walk_left', start: 8, end: 11 },
                 { key: 'walk_up', start: 12, end: 15 }
             ];
-            anims.forEach(a => {
+
+            animData.forEach(a => {
                 this.anims.create({
                     key: a.key,
                     frames: this.anims.generateFrameNumbers('mech', { start: a.start, end: a.end }),
@@ -65,19 +67,18 @@
                 });
             });
 
-            // Группы
             enemies = this.physics.add.group();
             bullets = this.physics.add.group();
 
-            // Игрок
+            // Создаем робота
             player = this.physics.add.sprite(config.width/2, config.height/2, 'mech', 0);
-            player.setScale(1.5);
+            player.setScale(1.8);
             player.setCollideWorldBounds(true);
 
-            // Управление
+            // Управление кликом
             this.input.on('pointerdown', (pointer) => {
                 targetPoint = pointer;
-                this.physics.moveToObject(player, pointer, 150);
+                this.physics.moveToObject(player, pointer, 160);
                 
                 const angle = Phaser.Math.Angle.Between(player.x, player.y, pointer.x, pointer.y);
                 const deg = Phaser.Math.RadToDeg(angle);
@@ -88,7 +89,7 @@
                 else if (deg < -45 && deg > -135) player.play('walk_up', true);
             });
 
-            // Столкновение: пуля убивает врага
+            // Стрельба
             this.physics.add.overlap(bullets, enemies, (bullet, enemy) => {
                 bullet.destroy();
                 enemy.destroy();
@@ -98,8 +99,7 @@
                 spawnEnemy(this);
             });
 
-            // Автострельба каждые 1.5 секунды
-            this.time.addEvent({ delay: 1500, callback: fire, callbackScope: this, loop: true });
+            this.time.addEvent({ delay: 1200, callback: fire, callbackScope: this, loop: true });
 
             for(let i=0; i<3; i++) spawnEnemy(this);
             loadProgress();
@@ -108,14 +108,15 @@
         function spawnEnemy(scene) {
             let x = Phaser.Math.Between(50, config.width - 50);
             let y = Phaser.Math.Between(50, config.height - 50);
-            let enemy = enemies.create(x, y, 'enemy').setTint(0xff0000).setScale(0.7);
+            enemies.create(x, y, 'enemy').setTint(0xff0000).setScale(0.8);
         }
 
         function fire() {
             let target = enemies.getFirstAlive();
             if (target) {
                 let bullet = bullets.create(player.x, player.y, 'bullet').setTint(0x00f2ff);
-                this.physics.moveToObject(bullet, target, 400);
+                this.physics.moveToObject(bullet, target, 450);
+                bullet.rotation = Phaser.Math.Angle.Between(player.x, player.y, target.x, target.y) + Math.PI/2;
             }
         }
 
@@ -135,7 +136,7 @@
             fetch(`${SERVER_URL}/save`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ userId, level: 1, scrap })
+                body: JSON.stringify({ userId, scrap })
             });
         }
 
