@@ -3,97 +3,158 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Mech Pilot Online</title>
+    <title>Mech Warrior Online</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser-arcade-physics.min.js"></script>
     <style>
-        body { margin: 0; background: #050510; color: #00f2ff; font-family: 'Courier New', monospace; overflow: hidden; }
-        #ui { position: absolute; bottom: 30px; width: 100%; text-align: center; }
-        .btn { 
-            background: #00f2ff; color: #000; border: none; padding: 15px 25px; 
-            margin: 5px; cursor: pointer; font-weight: bold; border-radius: 5px;
+        body { margin: 0; padding: 0; background: #020205; overflow: hidden; font-family: 'Courier New', monospace; }
+        #ui-layer {
+            position: absolute;
+            bottom: 20px;
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            z-index: 10;
+        }
+        .btn {
+            background: rgba(0, 242, 255, 0.1);
+            color: #00f2ff;
+            border: 2px solid #00f2ff;
+            padding: 15px 20px;
+            font-size: 14px;
+            font-weight: bold;
+            text-transform: uppercase;
+            cursor: pointer;
+            box-shadow: 0 0 10px rgba(0, 242, 255, 0.3);
+            border-radius: 4px;
+            transition: all 0.2s;
+        }
+        .btn:active {
+            background: #00f2ff;
+            color: #000;
+            box-shadow: 0 0 20px #00f2ff;
         }
     </style>
 </head>
 <body>
-    <div id="ui">
-        <button class="btn" onclick="performMission()">МИССИЯ (+10 лома)</button>
-        <button class="btn" onclick="upgradeMech()">ПРОКАЧКА (20 лома)</button>
+    <div id="ui-layer">
+        <button class="btn" onclick="performMission()">В БОЙ ЗА ЛОМОМ</button>
+        <button class="btn" onclick="upgradeMech()">МОДЕРНИЗАЦИЯ</button>
     </div>
 
     <script>
         const tg = window.Telegram.WebApp;
         tg.expand();
 
-        // ТВОЯ ССЫЛКА С RENDER ТУТ:
         const SERVER_URL = 'https://telegram-tetris.onrender.com';
 
         const config = {
             type: Phaser.AUTO,
             width: window.innerWidth,
-            height: window.innerHeight - 150,
-            backgroundColor: '#050510',
+            height: window.innerHeight,
+            backgroundColor: '#020205',
+            physics: { default: 'arcade' },
             scene: { preload, create, update }
         };
 
-        let game = new Phaser.Game(config);
+        const game = new Phaser.Game(config);
         let mech, statsText, scrap = 0, level = 1;
+        let radarLines;
 
         function preload() {
-            // Используем стандартный спрайт для теста
-            this.load.image('mech', 'https://labs.phaser.io/assets/sprites/fleck.png');
+            // Загружаем спрайт боевого робота
+            this.load.image('mech_unit', 'https://labs.phaser.io/assets/sprites/aqua_ball.png'); 
+            // Используем светящийся объект как ядро меха, пока не загрузим сложный спрайт
+            this.load.image('bg_grid', 'https://labs.phaser.io/assets/pics/bubble-on.png');
         }
 
         function create() {
-            mech = this.add.sprite(config.width / 2, config.height / 2, 'mech').setScale(5).setTint(0x00f2ff);
-            statsText = this.add.text(20, 20, 'Загрузка данных...', { fontSize: '20px', fill: '#00f2ff' });
-            
-            loadProgress(); // Пытаемся загрузить данные с сервера при старте
+            const width = config.width;
+            const height = config.height;
+
+            // 1. Создаем эффект сетки радара
+            radarLines = this.add.graphics();
+            radarLines.lineStyle(1, 0x00f2ff, 0.1);
+            for(let i=0; i<width; i+=30) radarLines.lineBetween(i, 0, i, height);
+            for(let j=0; j<height; j+=30) radarLines.lineBetween(0, j, width, j);
+
+            // 2. Визуал Меха (Центральное ядро)
+            mech = this.add.sprite(width / 2, height / 2 - 50, 'mech_unit');
+            mech.setScale(2);
+            mech.setTint(0x00f2ff);
+
+            // Анимация свечения Меха
+            this.tweens.add({
+                targets: mech,
+                alpha: 0.5,
+                scale: 2.2,
+                duration: 1500,
+                yoyo: true,
+                loop: -1
+            });
+
+            // 3. Текстовый интерфейс
+            const style = { fontSize: '18px', fill: '#00f2ff', fontShadow: '0 0 5px #00f2ff' };
+            statsText = this.add.text(20, 40, 'ИНИЦИАЛИЗАЦИЯ...', style);
+
+            // 4. Загрузка данных
+            loadProgress();
         }
 
         function update() {
-            if(mech) mech.y += Math.sin(this.time.now / 500) * 0.2;
+            // Вращение фоновой сетки или легкое смещение для динамики
+            mech.rotation += 0.01;
         }
 
         function updateUI() {
-            const name = tg.initDataUnsafe.user?.first_name || 'Пилот';
-            statsText.setText(`ПИЛОТ: ${name}\nУРОВЕНЬ: ${level}\nМЕТАЛЛОЛОМ: ${scrap}`);
+            const pilotName = tg.initDataUnsafe.user?.first_name || 'PILOT_01';
+            statsText.setText(
+                ` STATUS: ONLINE\n` +
+                ` PILOT: ${pilotName.toUpperCase()}\n` +
+                ` MECH LVL: ${level}\n` +
+                ` SCRAP: ${scrap} u.`
+            );
         }
 
-        // Функция выполнения миссии
         async function performMission() {
             scrap += 10;
             updateUI();
+            // Эффект вспышки при добыче
+            this.game.scene.scenes[0].cameras.main.flash(100, 0, 242, 255, 0.2);
             await saveProgress();
         }
 
-        // Функция прокачки
         async function upgradeMech() {
             if (scrap >= 20) {
                 scrap -= 20;
                 level++;
                 updateUI();
+                // Эффект увеличения при прокачке
+                this.game.scene.scenes[0].tweens.add({
+                    targets: mech,
+                    rotation: mech.rotation + Math.PI,
+                    duration: 500
+                });
                 await saveProgress();
             } else {
-                tg.showAlert("Недостаточно лома! Нужно 20.");
+                tg.showConfirm("Недостаточно лома для апгрейда!");
             }
         }
 
-        // СОХРАНЕНИЕ НА СЕРВЕР
         async function saveProgress() {
-            const userId = tg.initDataUnsafe.user?.id || 'local_user';
+            const userId = tg.initDataUnsafe.user?.id || 'TEST_ID';
             try {
                 await fetch(`${SERVER_URL}/save`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ userId, level, scrap })
                 });
-            } catch (e) { console.error("Ошибка сохранения:", e); }
+            } catch (e) { console.error(e); }
         }
 
-        // ЗАГРУЗКА С СЕРВЕРА
         async function loadProgress() {
-            const userId = tg.initDataUnsafe.user?.id || 'local_user';
+            const userId = tg.initDataUnsafe.user?.id || 'TEST_ID';
             try {
                 const res = await fetch(`${SERVER_URL}/load/${userId}`);
                 const data = await res.json();
@@ -101,8 +162,8 @@
                 scrap = data.scrap || 0;
                 updateUI();
             } catch (e) { 
-                console.error("Ошибка загрузки:", e);
-                updateUI(); // Если сервер спит, просто покажем дефолт
+                console.error(e);
+                updateUI();
             }
         }
     </script>
