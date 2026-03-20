@@ -3,152 +3,121 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Mech Warrior Pro</title>
+    <title>Mech Arena PVP</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser-arcade-physics.min.js"></script>
     <style>
-        body { margin: 0; background: #020205; overflow: hidden; }
-        #ui { position: absolute; top: 10px; left: 10px; color: #00f2ff; font-family: monospace; z-index: 10; font-size: 18px; text-shadow: 2px 2px #000; pointer-events: none; }
+        body { margin: 0; background: #050510; color: #00f2ff; font-family: 'Courier New', monospace; overflow: hidden; }
+        #arena { display: flex; flex-direction: column; align-items: center; height: 100vh; padding: 20px; }
+        .fighter-card { width: 80%; border: 2px solid #00f2ff; padding: 15px; margin: 10px; background: rgba(0,242,255,0.05); text-align: center; border-radius: 10px; box-shadow: 0 0 15px #00f2ff33; }
+        .vs { font-size: 24px; font-weight: bold; color: #ff0055; margin: 10px 0; }
+        .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; width: 100%; position: absolute; bottom: 30px; padding: 0 20px; box-sizing: border-box; }
+        .btn { background: #00f2ff; color: #000; border: none; padding: 15px; font-weight: bold; border-radius: 5px; cursor: pointer; text-transform: uppercase; }
+        .btn-red { background: #ff0055; color: #fff; grid-column: span 2; }
+        #log { font-size: 12px; height: 60px; overflow-y: hidden; margin-top: 10px; color: #aaa; }
     </style>
 </head>
 <body>
-    <div id="ui">SYSTEM: ACTIVE<br>SCRAP: <span id="scrap">0</span></div>
+    <div id="arena">
+        <div class="fighter-card" id="enemy-card">
+            <div style="color: #ff0055">ВРАЖЕСКИЙ МЕХ</div>
+            <div id="e-hp">HP: 100</div>
+            <div id="e-lvl">LVL: ?</div>
+        </div>
+
+        <div class="vs">VS</div>
+
+        <div class="fighter-card" id="player-card">
+            <div id="p-name">ТВОЙ МЕХ</div>
+            <div id="p-hp">HP: 100</div>
+            <div id="p-lvl">LVL: 1</div>
+        </div>
+
+        <div id="log">Ожидание приказа...</div>
+
+        <div class="controls">
+            <button class="btn" onclick="battleAction('attack')">АТАКА</button>
+            <button class="btn" onclick="battleAction('defend')">ЗАЩИТА</button>
+            <button class="btn btn-red" onclick="startSearch()">НАЙТИ ПРОТИВНИКА (10 Scrap)</button>
+        </div>
+    </div>
 
     <script>
         const tg = window.Telegram.WebApp;
         tg.expand();
         const SERVER_URL = 'https://telegram-tetris.onrender.com';
 
-        const config = {
-            type: Phaser.AUTO,
-            width: window.innerWidth,
-            height: window.innerHeight,
-            physics: { default: 'arcade', arcade: { debug: false } },
-            scene: { preload, create, update }
-        };
+        let myData = { scrap: 0, level: 1, hp: 100 };
+        let enemyData = { hp: 100, level: 0 };
 
-        let player, scrap = 0, enemies, bullets, targetPoint = null;
-        const game = new Phaser.Game(config);
-
-        function preload() {
-            // МЕНЯЕМ НАСТРОЙКИ НАРЕЗКИ:
-            // Используем 78x78 и margin/spacing чтобы убрать артефакты по бокам
-            this.load.spritesheet('mech', 'mech_sheet.png', { 
-                frameWidth: 78, 
-                frameHeight: 78,
-                margin: 1, 
-                spacing: 2
-            });
-            this.load.image('enemy', 'https://labs.phaser.io/assets/sprites/asmosoma.png');
-            this.load.image('bullet', 'https://labs.phaser.io/assets/sprites/bullets/bullet6.png');
+        async function loadData() {
+            const id = tg.initDataUnsafe.user?.id || 'TEST';
+            const res = await fetch(`${SERVER_URL}/load/${id}`);
+            const data = await res.json();
+            myData.scrap = data.scrap || 0;
+            myData.level = data.level || 1;
+            document.getElementById('p-lvl').innerText = "LVL: " + myData.level;
+            document.getElementById('p-name').innerText = tg.initDataUnsafe.user?.first_name || "PILOT";
         }
 
-        function create() {
-            // Фон - сетка
-            let graphics = this.add.graphics();
-            graphics.lineStyle(1, 0x00f2ff, 0.05);
-            for(let i=0; i<config.width; i+=40) graphics.lineBetween(i, 0, i, config.height);
-            for(let j=0; j<config.height; j+=40) graphics.lineBetween(0, j, config.width, j);
-
-            // Анимации (четко по кадрам)
-            const animData = [
-                { key: 'walk_down', start: 0, end: 3 },
-                { key: 'walk_right', start: 4, end: 7 },
-                { key: 'walk_left', start: 8, end: 11 },
-                { key: 'walk_up', start: 12, end: 15 }
-            ];
-
-            animData.forEach(a => {
-                this.anims.create({
-                    key: a.key,
-                    frames: this.anims.generateFrameNumbers('mech', { start: a.start, end: a.end }),
-                    frameRate: 10,
-                    repeat: -1
-                });
-            });
-
-            enemies = this.physics.add.group();
-            bullets = this.physics.add.group();
-
-            // Создаем робота
-            player = this.physics.add.sprite(config.width/2, config.height/2, 'mech', 0);
-            player.setScale(1.8);
-            player.setCollideWorldBounds(true);
-
-            // Управление кликом
-            this.input.on('pointerdown', (pointer) => {
-                targetPoint = pointer;
-                this.physics.moveToObject(player, pointer, 160);
-                
-                const angle = Phaser.Math.Angle.Between(player.x, player.y, pointer.x, pointer.y);
-                const deg = Phaser.Math.RadToDeg(angle);
-
-                if (deg >= -45 && deg <= 45) player.play('walk_right', true);
-                else if (deg > 45 && deg <= 135) player.play('walk_down', true);
-                else if (deg > 135 || deg <= -135) player.play('walk_left', true);
-                else if (deg < -45 && deg > -135) player.play('walk_up', true);
-            });
-
-            // Стрельба
-            this.physics.add.overlap(bullets, enemies, (bullet, enemy) => {
-                bullet.destroy();
-                enemy.destroy();
-                scrap += 5;
-                document.getElementById('scrap').innerText = scrap;
-                saveProgress();
-                spawnEnemy(this);
-            });
-
-            this.time.addEvent({ delay: 1200, callback: fire, callbackScope: this, loop: true });
-
-            for(let i=0; i<3; i++) spawnEnemy(this);
-            loadProgress();
+        function startSearch() {
+            if (myData.scrap < 10) {
+                tg.showAlert("Недостаточно Scrap для входа на Арену!");
+                return;
+            }
+            document.getElementById('log').innerText = "Поиск цели...";
+            // Имитация поиска игрока (в будущем заменим на реальный запрос к БД)
+            setTimeout(() => {
+                enemyData.level = Math.floor(Math.random() * 5) + 1;
+                enemyData.hp = 100;
+                document.getElementById('e-lvl').innerText = "LVL: " + enemyData.level;
+                document.getElementById('log').innerText = "Враг обнаружен! Бой начался.";
+            }, 1000);
         }
 
-        function spawnEnemy(scene) {
-            let x = Phaser.Math.Between(50, config.width - 50);
-            let y = Phaser.Math.Between(50, config.height - 50);
-            enemies.create(x, y, 'enemy').setTint(0xff0000).setScale(0.8);
-        }
+        function battleAction(type) {
+            if (enemyData.level === 0) return;
 
-        function fire() {
-            let target = enemies.getFirstAlive();
-            if (target) {
-                let bullet = bullets.create(player.x, player.y, 'bullet').setTint(0x00f2ff);
-                this.physics.moveToObject(bullet, target, 450);
-                bullet.rotation = Phaser.Math.Angle.Between(player.x, player.y, target.x, target.y) + Math.PI/2;
+            let dmg = myData.level * 10;
+            let eDmg = enemyData.level * 8;
+
+            if (type === 'defend') { eDmg /= 2; dmg /= 2; }
+
+            enemyData.hp -= dmg;
+            myData.hp -= eDmg;
+
+            document.getElementById('e-hp').innerText = `HP: ${enemyData.hp}`;
+            document.getElementById('p-hp').innerText = `HP: ${myData.hp}`;
+            document.getElementById('log').innerText = `Вы нанесли ${dmg} урона. Враг ответил на ${eDmg}.`;
+
+            if (enemyData.hp <= 0) {
+                tg.showAlert("ПОБЕДА! Вы забрали 20 Scrap.");
+                myData.scrap += 20;
+                resetBattle();
+            } else if (myData.hp <= 0) {
+                tg.showAlert("МЕХ РАЗРУШЕН. Вы потеряли 10 Scrap.");
+                myData.scrap -= 10;
+                resetBattle();
             }
         }
 
-        function update() {
-            if (targetPoint) {
-                const distance = Phaser.Math.Distance.Between(player.x, player.y, targetPoint.x, targetPoint.y);
-                if (distance < 10) {
-                    player.body.reset(player.x, player.y);
-                    player.anims.stop();
-                    targetPoint = null;
-                }
-            }
+        function resetBattle() {
+            enemyData.level = 0;
+            myData.hp = 100;
+            document.getElementById('e-hp').innerText = "HP: 100";
+            document.getElementById('p-hp').innerText = "HP: 100";
+            saveData();
         }
 
-        async function saveProgress() {
-            const userId = tg.initDataUnsafe.user?.id || 'TEST';
-            fetch(`${SERVER_URL}/save`, {
+        async function saveData() {
+            const id = tg.initDataUnsafe.user?.id || 'TEST';
+            await fetch(`${SERVER_URL}/save`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ userId, scrap })
+                body: JSON.stringify({ userId: id, scrap: myData.scrap, level: myData.level })
             });
         }
 
-        async function loadProgress() {
-            const userId = tg.initDataUnsafe.user?.id || 'TEST';
-            try {
-                const res = await fetch(`${SERVER_URL}/load/${userId}`);
-                const data = await res.json();
-                scrap = data.scrap || 0;
-                document.getElementById('scrap').innerText = scrap;
-            } catch (e) {}
-        }
+        loadData();
     </script>
 </body>
 </html>
